@@ -1,0 +1,15 @@
+[Unit]
+Description=Launch Control Panel runtime
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /home/pi/launch_control/src/main.py
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=launch_control
+User=pi
+Group=pi
+
+[Install]
+WantedBy=multi-user.target
