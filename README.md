@@ -31,6 +31,5 @@ TBD
 
 ## To Do
 
-- [ ] Script to authenticate against Yubico server and validate token
 - [ ] Script to enroll a Yubikey locally and pair it with a given action
 - [ ] Scroll a custom name string for a recognized Yubikey on the display

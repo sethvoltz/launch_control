@@ -13,6 +13,9 @@ import board
 import busio
 from transitions import Machine
 from adafruit_ht16k33 import segments
+import pathlib
+import json
+from yubico_client import Yubico, yubico_exceptions
 
 
 # =---------------------------------------------------------------------------------- Constants =--=
@@ -47,6 +50,10 @@ CAPS_CODE = {
     69: u''
 }
 
+# Config
+CONFIG_FILE = str(pathlib.PurePath(pathlib.Path(
+    __file__).parent.parent.absolute(), 'config.json'))
+
 
 # =-----------------------------------------------------------------------------------= Globals =--=
 
@@ -54,6 +61,7 @@ CAPS_CODE = {
 yubikey_path = None
 loop = None
 launch_control = None
+authenticated_user = None
 
 # 14-segment Display
 i2c = busio.I2C(board.SCL, board.SDA)
@@ -62,6 +70,7 @@ display.fill(0)  # clear the display
 display.brightness = 1.0
 
 # Logging
+# logging.basicConfig(stream=sys.stdout, level=logging.DEBUG) # uncomment for global debug
 logger = logging.getLogger('launch_control')
 logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler(sys.stdout)
@@ -84,6 +93,7 @@ class LaunchControl(object):
         self.machine.add_transition('turn_on', 'off', 'on')
         self.machine.add_transition('key_insert', 'on', 'waiting')
         self.machine.add_transition('authenticate', 'waiting', 'standby')
+        self.machine.add_transition('auth_failure', 'waiting', 'waiting')
         self.machine.add_transition('auth_timeout', 'standby', 'waiting')
         self.machine.add_transition('unlock', 'standby', 'ready')
         self.machine.add_transition('launch', 'ready', 'launching')
@@ -96,16 +106,17 @@ class LaunchControl(object):
 
     def on_enter_off(self):
         logger.info("Enter state Off")
+        authenticated_user = None
         display.fill(0)
         if not GPIO.input(PINS['TOGGLE_SWITCH']):
-            if launch_control:
-                launch_control.turn_on()
-            return None
+            launch_control.turn_on()
+            return
 
         GPIO.output(PINS['TOGGLE_LED'], GPIO.LOW)
 
     def on_enter_on(self):
         logger.info("Enter state On")
+        authenticated_user = None
         display.print('----')
         display.show()
         GPIO.output(PINS['TOGGLE_LED'], GPIO.HIGH)
@@ -115,6 +126,7 @@ class LaunchControl(object):
 
     def on_enter_waiting(self):
         logger.info("Enter state Waiting")
+        authenticated_user = None
         display.print('AUTH')
         display.show()
 
@@ -140,25 +152,60 @@ async def pull_solenoid():
     GPIO.output(PINS['SOLENOID'], GPIO.HIGH)
     await asyncio.sleep(3)
     GPIO.output(PINS['SOLENOID'], GPIO.LOW)
-
-    if launch_control:
-        launch_control.auth_timeout()
+    launch_control.auth_timeout()
 
 
 async def do_launch():
-    logger.debug('launching!')
+    global authenticated_user
+    logger.info('Launching action for authenticated_user %s', authenticated_user)
     task = asyncio.get_event_loop().create_task(animate_launch())
     await asyncio.sleep(5)
     task.cancel()
     logger.debug('launch complete')
 
-    if launch_control:
-        launch_control.complete()
+    launch_control.complete()
 
 
 async def authenticate_code(code):
-    if launch_control:
+    # Check the code is in the correct length
+    # 32 character OTP + 2-16 character identifier
+    if len(code) < 34 or len(code) > 48:
+        display.print('-NO-')
+        display.show()
+
+        await asyncio.sleep(2)
+        launch_control.auth_failure()
+
+        return
+
+    # Grab config
+    with open(CONFIG_FILE) as f:
+        config = json.load(f)
+
+    try:
+        display.print('YUBI')
+        client = Yubico(config['client_id'], config['api_secret'])
+        status = client.verify(code)
+    except yubico_exceptions.InvalidClientIdError:
+        e = sys.exc_info()[1]
+        logger.info('Client with id %s does not exist', (e.client_id))
+    except yubico_exceptions.SignatureVerificationError:
+        logger.info('Signature verification failed')
+    except yubico_exceptions.StatusCodeError:
+        e = sys.exc_info()[1]
+        logger.info('Negative status code was returned: %s', (e.status_code))
+
+    if status:
+        global authenticated_user
+        authenticated_user = code[1:-32]
+        logger.debug("Successful authentication for user %s", authenticated_user)
         launch_control.authenticate()
+    else:
+        display.print('FAIL')
+        display.show()
+
+        await asyncio.sleep(2)
+        launch_control.auth_failure()
 
 
 async def animate_launch():
@@ -214,7 +261,7 @@ def push_button(launch_control):
 def gpio_callback(callback, launch_control):
     if loop is None:
         logger.exception("Error: Main loop went missing")
-        return  # should not come to this
+        return # should not come to this
     loop.call_soon_threadsafe(callback, launch_control)
 
 
@@ -269,7 +316,6 @@ async def read_yubikey(device):
                         logger.info('Yubikey code entered: %s', code)
                         asyncio.get_event_loop().create_task(authenticate_code(code))
                         code = ''
-                        # return code
     except OSError:
         logger.debug("Yubikey likely removed")
 
@@ -326,7 +372,10 @@ if __name__ == '__main__':
         GPIO.add_event_detect(PINS['PUSH_BUTTON'], GPIO.BOTH, lambda pin: gpio_callback(
             push_button, launch_control), bouncetime=500)
 
-        # Watch for keyboard add/remove
+        # setup FSM
+        launch_control = LaunchControl()
+
+        # watch for keyboard add/remove
         context = pyudev.Context()
         monitor = pyudev.Monitor.from_netlink(context)
         monitor.filter_by(subsystem='input')
@@ -338,8 +387,7 @@ if __name__ == '__main__':
         # check for yubikey already inserted
         setup_yubikey()
 
-        # setup FSM
-        launch_control = LaunchControl()
+        # kick off FSM
         launch_control.init()
 
         # run the event loop
