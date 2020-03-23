@@ -45,5 +45,10 @@ I have included a [bunch of build and notebook photos][photos] taken across the 
 ## To Do
 
 - [ ] Script to enroll a Yubikey locally and pair it with a given action
+  - A script in bin to read a Yubikey, extract the identifier and ask for a script to run for that device's launch action
+- [ ] Create a general display asyncio Task for running the display
+  - Some function to set display to static string, scroll, or the launch animation and the display Task itself to run an infinite loop looking for changes to the display mode and to tick the display forward.
 - [ ] Scroll a custom name string for a recognized Yubikey on the display
+  - Additionally take a display name for an enrolled Yubikey and extend the display loop to show it
 - [ ] Include CAD for Yubi-lock
+- [ ] Automatic (or scripted) updates via Git pull and service restart
