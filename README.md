@@ -15,8 +15,8 @@ A fun 70's industrial inspired "launch" control panel with a Yubikey key switch.
 2. Clone this repo onto the launch control Raspberry Pi and run the following:
 
     ```bash
-    pip3 install pyudev evdev transitions adafruit-blinka adafruit-circuitpython-ht16k33 yubico-client
     cd launch_control
+    pip3 install -r requirements.txt
     cp config.json.example config.json
     ./bin/install
     ```

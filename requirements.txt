@@ -1,0 +1,17 @@
+###
+# Requirements!
+###
+
+# Keyboard and USB Events
+pyudev
+evdev
+
+# Finite State Machine
+transitions
+
+# I2C 14-Segment Display
+adafruit-blinka
+adafruit-circuitpython-ht16k33
+
+# Yubikey
+yubico-client
