@@ -157,7 +157,8 @@ async def pull_solenoid():
 
 async def do_launch():
     global authenticated_user
-    logger.info('Launching action for authenticated_user %s', authenticated_user)
+    logger.info('Launching action for authenticated_user %s',
+                authenticated_user)
     task = asyncio.get_event_loop().create_task(animate_launch())
     await asyncio.sleep(5)
     task.cancel()
@@ -198,7 +199,8 @@ async def authenticate_code(code):
     if status:
         global authenticated_user
         authenticated_user = code[1:-32]
-        logger.debug("Successful authentication for user %s", authenticated_user)
+        logger.debug("Successful authentication for user %s",
+                     authenticated_user)
         launch_control.authenticate()
     else:
         display.print('FAIL')
@@ -209,25 +211,20 @@ async def authenticate_code(code):
 
 
 async def animate_launch():
+    width = 4
+    place = 1
+    move = 1
+    fill = '*'
+    pad = ' '
+
     while True:
-        display.print('*   ')
+        display.print('%s%s%s' % (pad*(place - 1), fill, pad*(width - place)))
         display.show()
         await asyncio.sleep(.5)
-        display.print(' *  ')
-        display.show()
-        await asyncio.sleep(.5)
-        display.print('  * ')
-        display.show()
-        await asyncio.sleep(.5)
-        display.print('   *')
-        display.show()
-        await asyncio.sleep(.5)
-        display.print('  * ')
-        display.show()
-        await asyncio.sleep(.5)
-        display.print(' *  ')
-        display.show()
-        await asyncio.sleep(.5)
+
+        if place <= 1 or place >= width:
+            move *= -1
+        place += move
 
 
 # =--------------------------------------------------------------------= GPIO Callback Handlers =--=
@@ -261,7 +258,7 @@ def push_button(launch_control):
 def gpio_callback(callback, launch_control):
     if loop is None:
         logger.exception("Error: Main loop went missing")
-        return # should not come to this
+        return  # should not come to this
     loop.call_soon_threadsafe(callback, launch_control)
 
 
